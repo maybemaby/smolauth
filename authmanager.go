@@ -210,7 +210,7 @@ func (am *AuthManager) PasswordSignup(email string, password string) (int, error
 	})
 
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
 			return 0, ErrUserExists
 		}
 

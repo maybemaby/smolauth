@@ -8,8 +8,7 @@ sample-pg: test-pg-up
 	dotenvx run -- go run samples/main.go pg; docker container stop smolauthtest && docker container rm smolauthtest
 
 test: test-pg-up
-	go test -v ./...;
-	docker container stop smolauthtest && docker container rm smolauthtest
+	go test -v ./...; docker container stop smolauthtest && docker container rm smolauthtest
 
 test-sqlite:
 	go test -v ./...
