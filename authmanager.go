@@ -3,6 +3,7 @@ package smolauth
 import (
 	"database/sql"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -30,6 +31,9 @@ type AuthManager struct {
 	db             *sql.DB
 	databaseType   string
 	providers      map[string]OAuthProvider
+
+	// Optional logger for debugging
+	Logger *slog.Logger
 }
 
 type AuthOpts struct {
@@ -61,6 +65,10 @@ func NewAuthManager(opts AuthOpts) *AuthManager {
 	}
 
 	return &AuthManager{SessionManager: sessionManager, providers: make(map[string]OAuthProvider)}
+}
+
+func (am *AuthManager) WithLogger(logger *slog.Logger) {
+	am.Logger = logger.WithGroup("smolauth")
 }
 
 func (am *AuthManager) WithSqlite(db *sql.DB) {

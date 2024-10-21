@@ -7,13 +7,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
+	"strconv"
 	"time"
 
 	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/github"
 	"golang.org/x/oauth2/google"
 )
 
@@ -191,6 +193,7 @@ func (gp *GoogleProvider) googleExchange(ctx context.Context, code string, verif
 }
 
 func (gp *GoogleProvider) HandleCallback(authManager *AuthManager) http.HandlerFunc {
+	loggerEnabled := authManager.Logger != nil
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		code := r.URL.Query().Get("code")
@@ -218,6 +221,9 @@ func (gp *GoogleProvider) HandleCallback(authManager *AuthManager) http.HandlerF
 		token, userInfo, err := gp.googleExchange(r.Context(), code, verifier)
 
 		if err != nil {
+			if loggerEnabled {
+				authManager.Logger.Debug("smolauth: error exchanging code for token", slog.String("error", err.Error()))
+			}
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -226,6 +232,11 @@ func (gp *GoogleProvider) HandleCallback(authManager *AuthManager) http.HandlerF
 
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
+
+				if loggerEnabled {
+					authManager.Logger.Debug("smolauth: creating new user from google login")
+				}
+
 				// User does not exist, create user
 				id, err := authManager.insertUserAccount(UserAccount{
 					Email:                userInfo.Email,
@@ -237,7 +248,6 @@ func (gp *GoogleProvider) HandleCallback(authManager *AuthManager) http.HandlerF
 				})
 
 				if err != nil {
-					fmt.Printf("Error inserting user: %v\n", err)
 					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 					return
 				}
@@ -258,21 +268,25 @@ func (gp *GoogleProvider) HandleCallback(authManager *AuthManager) http.HandlerF
 			}
 		}
 
-		err = authManager.updateAccountTokens(user.ProviderId, user.Provider, token.AccessToken, updateAccountTokenData{
+		if loggerEnabled {
+			authManager.Logger.Debug("smolauth: updating user google tokens", slog.Int("userId", user.Id))
+		}
+
+		err = authManager.updateAccountTokens(user.Id, user.Provider, user.ProviderId, updateAccountTokenData{
 			AccessToken:       token.AccessToken,
 			RefreshToken:      token.RefreshToken,
 			AccessTokenExpiry: sql.NullTime{Time: token.Expiry, Valid: true},
 		})
 
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
 		err = authManager.Login(r, SessionData{UserId: user.Id})
 
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
 
@@ -281,6 +295,211 @@ func (gp *GoogleProvider) HandleCallback(authManager *AuthManager) http.HandlerF
 }
 
 // GitHub
+type GithubProvider struct {
+	config          *oauth2.Config
+	postCallbackUrl string
+}
+
+func NewGithubProvider(clientId, clientSecret, redirectUrl string, postCallbackUrl string, extraScopes []string) *GithubProvider {
+
+	scopes := append([]string{"user:email", "read:user", "user"}, extraScopes...)
+
+	return &GithubProvider{
+		config: &oauth2.Config{
+			ClientID:     clientId,
+			ClientSecret: clientSecret,
+			RedirectURL:  redirectUrl,
+			Endpoint:     github.Endpoint,
+			Scopes:       scopes,
+		},
+		postCallbackUrl: postCallbackUrl,
+	}
+}
+
+func (ghp *GithubProvider) HandleAuth(w http.ResponseWriter, r *http.Request) {
+	state, err := GenerateState()
+	verifier := oauth2.GenerateVerifier()
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     OAUTH_STATE_SESSION_KEY,
+		Value:    state,
+		MaxAge:   60 * 5,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     OAUTH_VERIFIER_SESSION_KEY,
+		Value:    verifier,
+		MaxAge:   60 * 5,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	url := ghp.config.AuthCodeURL(state, oauth2.AccessTypeOnline)
+
+	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
+}
+
+type githubUserInfo struct {
+	Id        int    `json:"id"`
+	Login     string `json:"login"`
+	AvatarUrl string `json:"avatar_url"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	Company   string `json:"company"`
+	Bio       string `json:"bio"`
+	Location  string `json:"location"`
+	HtmlUrl   string `json:"html_url"`
+}
+
+type githubUserEmailResponse struct {
+	Email      string `json:"email"`
+	Verified   bool   `json:"verified"`
+	Primary    bool   `json:"primary"`
+	Visibility string `json:"visibility"`
+}
+
+func (ghp *GithubProvider) HandleCallback(authManager *AuthManager) http.HandlerFunc {
+	loggerEnabled := authManager.Logger != nil
+	return func(w http.ResponseWriter, r *http.Request) {
+		code := r.URL.Query().Get("code")
+		stateErr := ValidateState(r)
+
+		if stateErr != nil {
+			http.Error(w, "missing code", http.StatusBadRequest)
+			return
+		}
+
+		tok, err := ghp.config.Exchange(r.Context(), code)
+
+		if err != nil {
+
+			if loggerEnabled {
+				authManager.Logger.Debug("smolauth: error exchanging code for token", slog.String("error", err.Error()))
+			}
+
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		client := ghp.config.Client(r.Context(), tok)
+
+		userInfo, err := client.Get("https://api.github.com/user")
+
+		if err != nil {
+
+			if loggerEnabled {
+				authManager.Logger.Debug("smolauth: error getting user info", slog.String("error", err.Error()))
+			}
+
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		defer userInfo.Body.Close()
+
+		var userJson githubUserInfo
+		json.NewDecoder(userInfo.Body).Decode(&userJson)
+		var email string
+		var emailRes []githubUserEmailResponse
+
+		// Github users can set email to private, must get email from a separate endpoint
+		if userJson.Email == "" {
+
+			emailInfo, err := client.Get("https://api.github.com/user/emails")
+
+			if err != nil {
+
+				if loggerEnabled {
+					authManager.Logger.Debug("smolauth: error getting user emails", slog.String("error", err.Error()))
+				}
+
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			defer emailInfo.Body.Close()
+
+			err = json.NewDecoder(emailInfo.Body).Decode(&emailRes)
+
+			if err != nil {
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			}
+
+			email = emailRes[0].Email
+		} else {
+			email = userJson.Email
+		}
+
+		user, err := authManager.getUserAccount(email, "github")
+
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+
+				if loggerEnabled {
+					authManager.Logger.Debug("smolauth: creating new user from github login")
+				}
+
+				id, err := authManager.insertUserAccount(UserAccount{
+					Email:    email,
+					Provider: "github",
+					// Github user id is an integer
+					ProviderId:   strconv.Itoa(userJson.Id),
+					AccessToken:  tok.AccessToken,
+					RefreshToken: tok.RefreshToken,
+					// Github tokens do not expire, set to 5 years in the future
+					AccessTokenExpiresAt: time.Now().Add(time.Hour * 24 * 365 * 5),
+				})
+
+				if err != nil {
+					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					return
+				}
+
+				err = authManager.Login(r, SessionData{UserId: id})
+
+				if err != nil {
+					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					return
+				}
+
+				http.Redirect(w, r, ghp.postCallbackUrl, http.StatusTemporaryRedirect)
+				return
+			}
+		}
+
+		if loggerEnabled {
+			authManager.Logger.Debug("smolauth: updating user github tokens", slog.Int("userId", user.Id))
+		}
+
+		err = authManager.updateAccountTokens(user.Id, user.Provider, user.ProviderId, updateAccountTokenData{
+			AccessToken:  tok.AccessToken,
+			RefreshToken: tok.RefreshToken,
+			// Github tokens do not expire, set to 5 years in the future
+			AccessTokenExpiry: sql.NullTime{Time: time.Now().Add(time.Hour * 24 * 365 * 5), Valid: true},
+		})
+
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		err = authManager.Login(r, SessionData{UserId: user.Id})
+
+		if err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		http.Redirect(w, r, ghp.postCallbackUrl, http.StatusTemporaryRedirect)
+	}
+}
 
 // Facebook
 
@@ -312,6 +531,10 @@ func (am *AuthManager) HandleOAuthCallback(name string) http.HandlerFunc {
 
 func (am *AuthManager) WithGoogle(provider *GoogleProvider) {
 	am.providers["google"] = provider
+}
+
+func (am *AuthManager) WithGithub(provider *GithubProvider) {
+	am.providers["github"] = provider
 }
 
 // Add generic OAuth provider not covered by the built-in providers
@@ -373,7 +596,7 @@ const updateAccountTokensPg = `
 UPDATE accounts SET access_token = $1, refresh_token = $2, access_token_expires_at = $3 WHERE user_id = $4 AND provider = $5 AND provider_id = $6
 `
 
-func (am *AuthManager) updateAccountTokens(userId, provider, providerId string, data updateAccountTokenData) error {
+func (am *AuthManager) updateAccountTokens(userId int, provider, providerId string, data updateAccountTokenData) error {
 	var stmt *sql.Stmt
 	var err error
 
