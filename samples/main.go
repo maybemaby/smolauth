@@ -207,37 +207,37 @@ func postgresMain() {
 	defer pool.Close()
 
 	_, err = db.Exec(`
-CREATE TABLE users (
-	id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-	email TEXT UNIQUE,
-	password_hash TEXT,
-	created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-);
+	CREATE TABLE users (
+		id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+		email TEXT UNIQUE,
+		password_hash TEXT,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
 
-CREATE TABLE accounts (
-	id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
-	created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	provider TEXT NOT NULL,
-	provider_id TEXT NOT NULL,
-	access_token TEXT NOT NULL,
-	refresh_token TEXT,
-	access_token_expires_at TIMESTAMPTZ NOT NULL
-);
+	CREATE TABLE accounts (
+		id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+		user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		provider TEXT NOT NULL,
+		provider_id TEXT NOT NULL,
+		access_token TEXT NOT NULL,
+		refresh_token TEXT,
+		access_token_expires_at TIMESTAMPTZ NOT NULL
+	);
 
-CREATE UNIQUE INDEX accounts_provider_provider_id_idx ON accounts (provider, provider_id);
+	CREATE UNIQUE INDEX accounts_provider_provider_id_idx ON accounts (provider, provider_id);
 
-CREATE TABLE sessions (
-	token TEXT PRIMARY KEY,
-	data BYTEA NOT NULL,
-	expiry TIMESTAMPTZ NOT NULL,
-);
+	CREATE TABLE sessions (
+		token TEXT PRIMARY KEY,
+		data BYTEA NOT NULL,
+		expiry TIMESTAMPTZ NOT NULL
+	);
 
-CREATE INDEX sessions_expiry_idx ON sessions (expiry);
-`)
+	CREATE INDEX sessions_expiry_idx ON sessions (expiry);
+	`)
 
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("seed", err)
 		return
 	}
 
@@ -245,13 +245,14 @@ CREATE INDEX sessions_expiry_idx ON sessions (expiry);
 
 	am := smolauth.NewAuthManager(smolauth.AuthOpts{})
 
-	am.WithSqlite(db)
+	am.WithPostgres(pool)
 	am.WithGoogle(googleProvider)
 
 	id, err := am.PasswordSignup("username@email.com", "password123")
 
 	if err != nil {
-		log.Fatal(err)
+
+		log.Fatal("passsignup", err)
 		return
 	}
 

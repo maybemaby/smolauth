@@ -90,9 +90,9 @@ func (am *AuthManager) WithPostgres(pool *pgxpool.Pool) {
 	am.databaseType = "postgres"
 }
 
-const insertUserQuerySqlite = `INSERT into USERS (email, password_hash) VALUES (? ,?) RETURNING id`
+const insertUserQuerySqlite = `INSERT into users (email, password_hash) VALUES (?, ?) RETURNING id`
 
-const insertUserQueryPostgres = `INSERT into USERS (email, password_hash) VALUES ($1 , $2) RETURNING id`
+const insertUserQueryPostgres = `INSERT into users (email, password_hash) VALUES ($1, $2) RETURNING id`
 
 func (am *AuthManager) insertUser(email sql.NullString, passwordHash sql.NullString) (int, error) {
 	var err error
@@ -123,8 +123,8 @@ type UserAccount struct {
 	AccessTokenExpiresAt time.Time
 }
 
-const insertUserNoPassSqlite = `INSERT into USERS (email) VALUES (?) RETURNING id`
-const insertUserNoPassPostgres = `INSERT into USERS (email) VALUES ($1) RETURNING id`
+const insertUserNoPassSqlite = `INSERT into users (email) VALUES (?) RETURNING id`
+const insertUserNoPassPostgres = `INSERT into users (email) VALUES ($1) RETURNING id`
 
 const insertAccountSqlite = `
 INSERT into accounts (user_id, provider, provider_id, access_token, refresh_token, access_token_expires_at)

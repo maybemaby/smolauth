@@ -89,3 +89,6 @@ CREATE TABLE sessions (
 
 CREATE INDEX sessions_expiry_idx ON sessions (expiry);
 ```
+
+## TODO
+- [ ] Handle existing user when linking account
