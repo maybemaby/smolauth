@@ -1,6 +1,7 @@
 package smolauth
 
 import (
+	"context"
 	"errors"
 	"net/http"
 )
@@ -10,34 +11,46 @@ var (
 )
 
 func (am *AuthManager) Login(r *http.Request, data SessionData) error {
-	err := am.SessionManager.RenewToken(r.Context())
+	return am.LoginCtx(r.Context(), data)
+}
+
+func (am *AuthManager) LoginCtx(ctx context.Context, data SessionData) error {
+	err := am.SessionManager.RenewToken(ctx)
 
 	if err != nil {
 		return err
 	}
 
-	am.SessionManager.Put(r.Context(), SessionUserIdKey, data.UserId)
+	am.SessionManager.Put(ctx, SessionUserIdKey, data.UserId)
 
 	return nil
 }
 
-func (am *AuthManager) Logout(r *http.Request) error {
+func (am *AuthManager) LogoutCtx(ctx context.Context) error {
 
-	err := am.SessionManager.RenewToken(r.Context())
+	err := am.SessionManager.RenewToken(ctx)
 
 	if err != nil {
 		return err
 	}
 
-	return am.SessionManager.Destroy(r.Context())
+	return am.SessionManager.Destroy(ctx)
 }
 
-func (am *AuthManager) GetUser(r *http.Request) (ReadUser, error) {
-	userId := am.SessionManager.GetInt(r.Context(), SessionUserIdKey)
+func (am *AuthManager) Logout(r *http.Request) error {
+	return am.LogoutCtx(r.Context())
+}
+
+func (am *AuthManager) GetUserCtx(ctx context.Context) (ReadUser, error) {
+	userId := am.SessionManager.GetInt(ctx, SessionUserIdKey)
 
 	if userId == 0 {
 		return ReadUser{}, ErrUnauthenticated
 	}
 
 	return am.getUserById(userId)
+}
+
+func (am *AuthManager) GetUser(r *http.Request) (ReadUser, error) {
+	return am.GetUserCtx(r.Context())
 }

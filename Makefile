@@ -11,6 +11,9 @@ test: test-pg-up
 	go test -v ./...;
 	docker container stop smolauthtest && docker container rm smolauthtest
 
+test-sqlite:
+	go test -v ./...
+
 prepare:
 	go mod tidy
 	go test -v ./...
