@@ -83,25 +83,28 @@ func (suite *AuthManagerSqliteSuite) TestPasswordSignupDupeReturnsError() {
 func (suite *AuthManagerSqliteSuite) TestCheckPassword() {
 	suite.manager.PasswordSignup("emailpass", "password")
 
-	err := suite.manager.CheckPassword("emailpass", "password")
+	id, err := suite.manager.CheckPassword("emailpass", "password")
 
 	assert.NoError(suite.T(), err)
+	assert.NotEqual(suite.T(), 0, id)
 }
 
 func (suite *AuthManagerSqliteSuite) TestCheckPasswordInvalidEmail() {
-	err := suite.manager.CheckPassword("none", "password")
+	id, err := suite.manager.CheckPassword("none", "password")
 
 	assert.Error(suite.T(), err)
 	assert.ErrorIs(suite.T(), err, smolauth.ErrInvalidEmail)
+	assert.Equal(suite.T(), 0, id)
 }
 
 func (suite *AuthManagerSqliteSuite) TestCheckPasswordInvalidPassword() {
 	suite.manager.PasswordSignup("emailpassinvalid", "password")
 
-	err := suite.manager.CheckPassword("emailpassinvalid", "wrongpassword")
+	id, err := suite.manager.CheckPassword("emailpassinvalid", "wrongpassword")
 
 	assert.Error(suite.T(), err)
 	assert.ErrorIs(suite.T(), err, smolauth.ErrInvalidPassword)
+	assert.Equal(suite.T(), 0, id)
 }
 
 func (suite *AuthManagerSqliteSuite) TearDownTest() {

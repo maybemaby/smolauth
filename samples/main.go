@@ -126,7 +126,7 @@ CREATE TABLE sessions (
 			return
 		}
 
-		err = am.CheckPassword(data.Email, data.Password)
+		id, err = am.CheckPassword(data.Email, data.Password)
 
 		if err != nil {
 			log.Printf("Error checking password: %v\n", err)
@@ -282,7 +282,7 @@ CREATE INDEX sessions_expiry_idx ON sessions (expiry);
 			return
 		}
 
-		err = am.CheckPassword(data.Email, data.Password)
+		id, err = am.CheckPassword(data.Email, data.Password)
 
 		if err != nil {
 			log.Printf("Error checking password: %v\n", err)

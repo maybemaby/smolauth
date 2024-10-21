@@ -212,11 +212,15 @@ func (am *AuthManager) PasswordSignup(email string, password string) (int, error
 	return id, nil
 }
 
-const checkPasswordQuerySqlite = `SELECT password_hash FROM users WHERE email = ? LIMIT 1`
-const checkPasswordQueryPostgres = `SELECT password_hash FROM users WHERE email = $1 LIMIT 1`
+const checkPasswordQuerySqlite = `SELECT id, password_hash FROM users WHERE email = ? LIMIT 1`
+const checkPasswordQueryPostgres = `SELECT id, password_hash FROM users WHERE email = $1 LIMIT 1`
 
-// Return a different error for invalid email vs invalid password
-func (am *AuthManager) CheckPassword(email string, password string) error {
+// CheckPassword checks if the password is correct for the given email
+// Returns user id if the password is correct to be used in the session
+// Returns ErrInvalidEmail if the user with email is not found
+// Returns ErrInvalidPassword if the password doesn't match the hash
+func (am *AuthManager) CheckPassword(email string, password string) (int, error) {
+	var id int
 	var hash string
 	var err error
 	var stmt *sql.Stmt
@@ -228,24 +232,24 @@ func (am *AuthManager) CheckPassword(email string, password string) error {
 	}
 
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	defer stmt.Close()
 
-	err = stmt.QueryRow(email).Scan(&hash)
+	err = stmt.QueryRow(email).Scan(&id, &hash)
 
 	if err != nil {
-		return ErrInvalidEmail
+		return 0, ErrInvalidEmail
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 
 	if err != nil {
-		return ErrInvalidPassword
+		return 0, ErrInvalidPassword
 	}
 
-	return nil
+	return id, nil
 }
 
 type ReadUser struct {
