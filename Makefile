@@ -1,11 +1,15 @@
+test-pg-up:
+	docker run --name smolauthtest -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres -e POSTGRES_DB=smolauth -p 5432:5432 -d postgres
+
 sample-sqlite:
-	go run samples/sqlite.go
+	dotenvx run -- go run samples/main.go sqlite
 
-sample-pg:
-	go run samples/pg.go
+sample-pg: test-pg-up
+	dotenvx run -- go run samples/main.go pg; docker container stop smolauthtest && docker container rm smolauthtest
 
-test:
-	go test -v ./...
+test: test-pg-up
+	go test -v ./...;
+	docker container stop smolauthtest && docker container rm smolauthtest
 
 prepare:
 	go mod tidy
@@ -18,3 +22,4 @@ commit-tagged: prepare
 	read TAG; \
 	git commit -S -m "$$MESSAGE"; \
 	git tag -s $$TAG
+

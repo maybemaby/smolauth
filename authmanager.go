@@ -24,9 +24,12 @@ var (
 )
 
 type AuthManager struct {
+	// SessionManager from https://github.com/alexedwards/scs, can be assigned to a custom session manager,
+	// only guaranteed to work with pgxstore and sqlite3store
 	SessionManager *scs.SessionManager
 	db             *sql.DB
 	databaseType   string
+	providers      map[string]OAuthProvider
 }
 
 type AuthOpts struct {
@@ -35,6 +38,7 @@ type AuthOpts struct {
 }
 
 type SessionData struct {
+	// UserId is the primary key of the user in the database
 	UserId int
 }
 
@@ -56,7 +60,7 @@ func NewAuthManager(opts AuthOpts) *AuthManager {
 		sessionManager.Lifetime = time.Hour * 24 * 7
 	}
 
-	return &AuthManager{SessionManager: sessionManager}
+	return &AuthManager{SessionManager: sessionManager, providers: make(map[string]OAuthProvider)}
 }
 
 func (am *AuthManager) WithSqlite(db *sql.DB) {

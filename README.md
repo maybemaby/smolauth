@@ -32,7 +32,7 @@ If you need extended user or account schemas, I suggest using a one-to-one table
 CREATE TABLE users (
 	id INTEGER PRIMARY KEY NOT NULL,
 	email TEXT UNIQUE,
-	password_hash TEXT NOT NULL,
+	password_hash TEXT,
 	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -44,8 +44,10 @@ CREATE TABLE accounts (
 	provider_id TEXT NOT NULL,
 	access_token TEXT NOT NULL,
 	refresh_token TEXT,
-	access_token_expires_at INTEGER NOT NULL
+	access_token_expires_at DATETIME NOT NULL
 );
+
+CREATE UNIQUE INDEX accounts_provider_provider_id_idx ON accounts (provider, provider_id);
 
 CREATE TABLE sessions (
 	token TEXT PRIMARY KEY,
@@ -62,14 +64,22 @@ CREATE INDEX sessions_expiry_idx ON sessions(expiry);
 CREATE TABLE users (
 	id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
 	email TEXT UNIQUE,
-	password_hash TEXT NOT NULL,
+	password_hash TEXT,
 	created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE accounts (
-
+	id INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	provider TEXT NOT NULL,
+	provider_id TEXT NOT NULL,
+	access_token TEXT NOT NULL,
+	refresh_token TEXT,
+	access_token_expires_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE UNIQUE INDEX accounts_provider_provider_id_idx ON accounts (provider, provider_id);
 
 CREATE TABLE sessions (
 	token TEXT PRIMARY KEY,

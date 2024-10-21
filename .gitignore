@@ -1,1 +1,4 @@
 *.http
+.vscode
+.env
+!.env.*example
