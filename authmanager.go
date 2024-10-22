@@ -54,8 +54,28 @@ func NewAuthManager(opts AuthOpts) *AuthManager {
 
 	sessionManager := scs.New()
 
+	// Check zero value
 	if (opts.Cookie != scs.SessionCookie{}) {
-		sessionManager.Cookie = opts.Cookie
+		// Fill only if not zero value, otherwise use defaults from scs
+		if opts.Cookie.Path != "" {
+			sessionManager.Cookie.Path = opts.Cookie.Path
+		}
+
+		if opts.Cookie.Domain != "" {
+			sessionManager.Cookie.Domain = opts.Cookie.Domain
+		}
+
+		if opts.Cookie.SameSite != 0 {
+			sessionManager.Cookie.SameSite = opts.Cookie.SameSite
+		}
+
+		if opts.Cookie.Name != "" {
+			sessionManager.Cookie.Name = opts.Cookie.Name
+		}
+
+		sessionManager.Cookie.HttpOnly = opts.Cookie.HttpOnly
+		sessionManager.Cookie.Secure = opts.Cookie.Secure
+		sessionManager.Cookie.Persist = opts.Cookie.Persist
 	} else {
 		sessionManager.Cookie.Name = "smolauth_sess"
 		sessionManager.Cookie.HttpOnly = true

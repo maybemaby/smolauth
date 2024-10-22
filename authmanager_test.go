@@ -3,8 +3,10 @@ package smolauth_test
 import (
 	"context"
 	"database/sql"
+	"net/http"
 	"testing"
 
+	"github.com/alexedwards/scs/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	_ "github.com/mattn/go-sqlite3"
@@ -94,6 +96,20 @@ func (suite *AuthManagerSqliteSuite) SetupTest() {
 	manager.WithSqlite(db)
 
 	suite.manager = manager
+}
+
+func (suite *AuthManagerSqliteSuite) TestSessionManagerCookieDefaults() {
+	manager := smolauth.NewAuthManager(smolauth.AuthOpts{
+		Cookie: scs.SessionCookie{
+			HttpOnly: true,
+			Persist:  true,
+		},
+	})
+
+	assert.Equal(suite.T(), "/", manager.SessionManager.Cookie.Path)
+	assert.Equal(suite.T(), "session", manager.SessionManager.Cookie.Name)
+	assert.Equal(suite.T(), http.SameSiteLaxMode, manager.SessionManager.Cookie.SameSite)
+	assert.False(suite.T(), manager.SessionManager.Cookie.Secure)
 }
 
 func (suite *AuthManagerSqliteSuite) TestPasswordSignup() {
