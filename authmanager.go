@@ -44,6 +44,10 @@ type AuthOpts struct {
 type SessionData struct {
 	// UserId is the primary key of the user in the database
 	UserId int
+
+	// Extra can be any additional data that needs to be stored in the session
+	// Must be gob-encodable, so register custom types with gob.Register
+	Extra interface{}
 }
 
 func NewAuthManager(opts AuthOpts) *AuthManager {
@@ -67,6 +71,7 @@ func NewAuthManager(opts AuthOpts) *AuthManager {
 	return &AuthManager{SessionManager: sessionManager, providers: make(map[string]OAuthProvider)}
 }
 
+// WithLogger assigns a logger to the AuthManager, which will be used for debugging
 func (am *AuthManager) WithLogger(logger *slog.Logger) {
 	am.Logger = logger.WithGroup("smolauth")
 }
@@ -135,6 +140,7 @@ const insertAccountPostgres = `
 INSERT into accounts (user_id, provider, provider_id, access_token, refresh_token, access_token_expires_at)
 VALUES ($1, $2, $3, $4, $5, $6)`
 
+// Does user insert without password and then inserts the account, rolling back if there is an error
 func (am *AuthManager) insertUserAccount(user UserAccount) (int, error) {
 	var userId int
 	tx, err := am.db.Begin()
@@ -194,6 +200,10 @@ func (am *AuthManager) insertUserAccount(user UserAccount) (int, error) {
 	return userId, nil
 }
 
+// PasswordSignup creates a new user with the given email and password
+// Password is hashed with bcrypt
+// Returns the user id if successful
+// Returns ErrUserExists if a user with that email already exists
 func (am *AuthManager) PasswordSignup(email string, password string) (int, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 

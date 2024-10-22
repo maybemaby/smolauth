@@ -122,7 +122,7 @@ CREATE INDEX sessions_expiry_idx ON sessions(expiry);`)
 			return
 		}
 
-		err = am.Login(r, smolauth.SessionData{UserId: id})
+		err = am.Login(r, smolauth.SessionData{UserId: id, Extra: "extra"})
 
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -150,7 +150,7 @@ CREATE INDEX sessions_expiry_idx ON sessions(expiry);`)
 			return
 		}
 
-		err = am.Login(r, smolauth.SessionData{UserId: id})
+		err = am.Login(r, smolauth.SessionData{UserId: id, Extra: "extra"})
 
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

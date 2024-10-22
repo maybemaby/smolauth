@@ -180,11 +180,12 @@ func (gp *GoogleProvider) googleExchange(ctx context.Context, code string, verif
 	client := gp.config.Client(ctx, tok)
 
 	userInfo, err := client.Get("https://openidconnect.googleapis.com/v1/userinfo")
-	defer userInfo.Body.Close()
 
 	if err != nil {
 		return nil, nil, err
 	}
+
+	defer userInfo.Body.Close()
 
 	var userJson googleUserInfo
 	json.NewDecoder(userInfo.Body).Decode(&userJson)

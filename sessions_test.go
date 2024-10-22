@@ -1,9 +1,11 @@
 package smolauth_test
 
 import (
+	"encoding/gob"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/alexedwards/scs/v2/memstore"
 	"github.com/maybemaby/smolauth"
@@ -16,20 +18,25 @@ type SessionsTestSuite struct {
 	manager *smolauth.AuthManager
 }
 
+type extraData struct {
+	Name     string
+	IsAdmin  bool
+	ExpireAt time.Time
+}
+
+var extra = extraData{
+	Name:     "John Doe",
+	IsAdmin:  true,
+	ExpireAt: time.Now().Add(time.Hour * 24),
+}
+
 func (suite *SessionsTestSuite) SetupTest() {
 	manager := smolauth.NewAuthManager(smolauth.AuthOpts{})
 
-	// returnFind := make(map[string][]byte)
-
-	// returnFind["ok"] = []byte(`{"UserId":1}`)
-
-	// returnDelete := make(map[string]error)
-
-	// returnDelete["ok"] = nil
-	// returnDelete["error"] = errors.New("mock error")
-
 	manager.SessionManager.Store = memstore.New()
 	suite.manager = manager
+
+	gob.Register(extraData{})
 }
 
 func (suite *SessionsTestSuite) TestLoginOk() {
@@ -40,7 +47,7 @@ func (suite *SessionsTestSuite) TestLoginOk() {
 
 	loginHandler := func(w http.ResponseWriter, r *http.Request) {
 
-		suite.manager.Login(r, smolauth.SessionData{UserId: 1})
+		suite.manager.Login(r, smolauth.SessionData{UserId: 1, Extra: extra})
 
 		w.WriteHeader(http.StatusOK)
 	}
@@ -60,8 +67,10 @@ func (suite *SessionsTestSuite) TestLoginOk() {
 	authHandler := func(w http.ResponseWriter, r *http.Request) {
 
 		userId := suite.manager.SessionManager.GetInt(r.Context(), smolauth.SessionUserIdKey)
+		extra := suite.manager.SessionManager.Get(r.Context(), smolauth.SessionExtraKey)
 
 		assert.Equal(suite.T(), 1, userId)
+		assert.IsType(suite.T(), extraData{}, extra)
 
 		w.WriteHeader(http.StatusOK)
 	}
@@ -81,7 +90,7 @@ func (suite *SessionsTestSuite) TestLogout() {
 
 	loginHandler := func(w http.ResponseWriter, r *http.Request) {
 
-		suite.manager.Login(r, smolauth.SessionData{UserId: 1})
+		suite.manager.Login(r, smolauth.SessionData{UserId: 1, Extra: extra})
 
 		w.WriteHeader(http.StatusOK)
 	}
@@ -121,8 +130,10 @@ func (suite *SessionsTestSuite) TestLogout() {
 	authHandler := func(w http.ResponseWriter, r *http.Request) {
 
 		userId := suite.manager.SessionManager.GetInt(r.Context(), smolauth.SessionUserIdKey)
+		extraStuff := suite.manager.SessionManager.Get(r.Context(), smolauth.SessionExtraKey)
 
 		assert.Equal(suite.T(), 0, userId)
+		assert.Nil(suite.T(), extraStuff)
 
 		if userId == 0 {
 			w.WriteHeader(http.StatusUnauthorized)

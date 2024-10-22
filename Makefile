@@ -15,7 +15,7 @@ test-sqlite:
 
 prepare:
 	go mod tidy
-	go test -v ./...
+	go fmt ./...
 
 commit-tagged: prepare
 	echo "Enter commit message: "; \
