@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -269,11 +270,20 @@ func (gp *GoogleProvider) HandleCallback(authManager *AuthManager) http.HandlerF
 			}
 		}
 
+		if user.ProviderId == nil || user.Provider == nil {
+			if loggerEnabled {
+				authManager.Logger.Debug("smolauth: no account found for user", slog.Int("userId", user.Id))
+			}
+
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
 		if loggerEnabled {
 			authManager.Logger.Debug("smolauth: updating user google tokens", slog.Int("userId", user.Id))
 		}
 
-		err = authManager.updateAccountTokens(user.Id, user.Provider, user.ProviderId, updateAccountTokenData{
+		err = authManager.updateAccountTokens(user.Id, *user.Provider, *user.ProviderId, updateAccountTokenData{
 			AccessToken:       token.AccessToken,
 			RefreshToken:      token.RefreshToken,
 			AccessTokenExpiry: sql.NullTime{Time: token.Expiry, Valid: true},
@@ -475,11 +485,20 @@ func (ghp *GithubProvider) HandleCallback(authManager *AuthManager) http.Handler
 			}
 		}
 
+		if user.ProviderId == nil || user.Provider == nil {
+			if loggerEnabled {
+				authManager.Logger.Debug("smolauth: no account found for user", slog.Int("userId", user.Id))
+			}
+
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
 		if loggerEnabled {
 			authManager.Logger.Debug("smolauth: updating user github tokens", slog.Int("userId", user.Id))
 		}
 
-		err = authManager.updateAccountTokens(user.Id, user.Provider, user.ProviderId, updateAccountTokenData{
+		err = authManager.updateAccountTokens(user.Id, *user.Provider, *user.ProviderId, updateAccountTokenData{
 			AccessToken:  tok.AccessToken,
 			RefreshToken: tok.RefreshToken,
 			// Github tokens do not expire, set to 5 years in the future
@@ -546,24 +565,24 @@ func (am *AuthManager) WithProvider(name string, provider OAuthProvider) {
 type existingUserAccount struct {
 	Id         int
 	Email      string
-	Provider   string
-	ProviderId string `db:"provider_id"`
+	Provider   *string
+	ProviderId *string `db:"provider_id"`
 }
 
 const getUserAccountSqlite = `
 SELECT u.id, u.email, a.provider, a.provider_id from users u
 LEFT JOIN accounts as a ON u.id = a.user_id
-WHERE u.email = ? AND a.provider = ?
+WHERE u.email = ?
 `
 
 const getUserAccountPostgres = `
 SELECT u.id, u.email, a.provider, a.provider_id from users u
 LEFT JOIN accounts as a ON u.id = a.user_id
-WHERE u.email = $1 AND a.provider = $2
+WHERE u.email = $1
 `
 
 func (am *AuthManager) getUserAccount(email string, provider string) (existingUserAccount, error) {
-	var user existingUserAccount
+	var users []existingUserAccount
 	var err error
 	var stmt *sql.Stmt
 
@@ -574,14 +593,39 @@ func (am *AuthManager) getUserAccount(email string, provider string) (existingUs
 	}
 
 	if err != nil {
-		return user, err
+		return existingUserAccount{}, err
 	}
 
 	defer stmt.Close()
 
-	err = stmt.QueryRow(email, provider).Scan(&user.Id, &user.Email, &user.Provider, &user.ProviderId)
+	rows, err := stmt.Query(email)
 
-	return user, err
+	if err != nil {
+		return existingUserAccount{}, err
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var u existingUserAccount
+		err = rows.Scan(&u.Id, &u.Email, &u.Provider, &u.ProviderId)
+
+		if err != nil {
+			return existingUserAccount{}, err
+		}
+
+		users = append(users, u)
+	}
+
+	idx := slices.IndexFunc(users, func(u existingUserAccount) bool {
+		return u.Provider != nil && *u.Provider == provider
+	})
+
+	if idx == -1 {
+		return users[0], nil
+	}
+
+	return users[idx], err
 }
 
 type updateAccountTokenData struct {
